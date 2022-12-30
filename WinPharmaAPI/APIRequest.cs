@@ -5,24 +5,61 @@ namespace WinPharmaAPI
 {
     public class APIRequest
     {
-        public APIResult result { get; set; }
-        public string status { get; set; }
-        public string requestId { get; set; }
+        public APIResult? result { get; set; }
+        public string? status { get; set; }
+        public string? requestId { get; set; }
         public APIRequest()
         {
-            result = new APIResult();
-            status = "";
-            requestId = "";
-        }
-        public APIRequest(APIResult result, string status, string requestId)
-        {
-            this.result = result;
-            this.status = status;
-            this.requestId = requestId;
         }
         public APIRequest(int? Skip, int? Take, string? Expand, string? Filter, string? OrderBy, string? OrderDirection, IMemoryCache cache, IConfiguration config)
         {
-            
+            string addToUrl = setUrl(Skip, Take, Expand, Filter, OrderBy, OrderDirection);
+            try
+            {
+                setFromAPI(addToUrl, cache, config);
+            }
+            catch
+            {
+                setFromCache(addToUrl, cache);
+            }
+        }
+        private void setFromAPI(string addToUrl, IMemoryCache cache, IConfiguration config)
+        {
+            var url = config.GetValue<string>(
+                "url");
+            var auth = config.GetValue<string>(
+            "base64Auth");
+            var json = GetJsonFromUrl(url + addToUrl, auth);
+            var res = JsonConvert.DeserializeObject<APIRequest>(json);
+            if (res == null || res.status == "Error")
+                throw new Exception("API unavailible or overloaded.");
+            else
+            {
+                cache.Set(addToUrl, res);
+                result = res.result;
+                status = res.status;
+                this.requestId = res.requestId;
+            }
+        }
+
+        private void setFromCache(string addToUrl, IMemoryCache cache)
+        {
+            //Если в кэше не найдено - бросаем ошибку
+            if (!cache.TryGetValue(addToUrl, out APIRequest res))
+            {
+                throw new Exception("API overloaded and value not in cache");
+            }
+            //Если найдено - меняем статус
+            else
+            {
+                result = res.result;
+                requestId = res.requestId;
+                status = "FromCache";
+            }
+        }
+
+        private static string setUrl (int? Skip, int? Take, string? Expand, string? Filter, string? OrderBy, string? OrderDirection)
+        {
             //объявляем переменную, которая будет ключем в кэше
             string addToUrl = "";
             if (Skip != null)
@@ -49,65 +86,10 @@ namespace WinPharmaAPI
             {
                 addToUrl += (addToUrl != "" ? "&" : "") + "OrderDirection=" + OrderDirection;
             }
-            var res = new APIRequest();
-            try
-            {
-                var url = config.GetValue<string>(
-                "url");
-                var auth = config.GetValue<string>(
-                "base64Auth");
-                var json = GetJsonFromUrl(url + addToUrl, auth);
-                res = JsonConvert.DeserializeObject<APIRequest>(json);
-                //Если апи ответила нормально, но со статусом Error - берем из кэша
-                if (res != null && res.status == "Error")
-                {
-                    //Если в кэше не найдено - бросаем ошибку
-                    if (!cache.TryGetValue(addToUrl, out res))
-                    {
-                        throw new Exception("API overloaded and value not in cache");
-                    }
-                    //Если найдено - меняем статус
-                    else
-                    {
-                        //не понятно зачем эта проверка, но без нее студия ругается на possible null, не смотря на проверку на 62 строчке.
-                        if (res != null)
-                            res.status = "FromCache";
-                    }
-                }
-                //Добавляем в кэш по ключу и полученному res
-                else
-                {
-                    cache.Set(addToUrl, res);
-                }
-            }
-            //Отлавливаем непредвиденные ошибки, пытаемся взять значение из кэша, если не получается - кидаем ошибку
-            catch
-            {
-                if (!cache.TryGetValue(addToUrl, out res))
-                {
-                    throw new Exception("Error occured and value not in cache");
-                }
-                else
-                {
-                    if (res != null)
-                        res.status = "FromCache";
-                }
-            }
-            if (res != null)
-            {
-                this.result = res.result;
-                this.status = res.status;
-                this.requestId = res.requestId;
-            }
-            else
-            {
-                this.result = new APIResult();
-                this.status = "Error";
-                this.requestId = "Error";
-            }
+            return addToUrl;
         }
 
-        public static string GetJsonFromUrl(string url, string base64EncodedAuthenticationString)
+        private static string GetJsonFromUrl(string url, string base64EncodedAuthenticationString)
         {
             var request = new HttpRequestMessage(HttpMethod.Get,
             url);
@@ -126,8 +108,8 @@ namespace WinPharmaAPI
 
     public class APIResult
     {
-        public int totalItems { get; set; }
-        public APIResultRow[] items { get; set;}
+        public int? totalItems { get; set; }
+        public APIResultRow[]? items { get; set;}
         public APIResult()
         {
             this.totalItems = 0;
@@ -137,21 +119,11 @@ namespace WinPharmaAPI
 
     public class APIResultRow
     {
-        public string code { get; set; }
-        public string title { get; set; }
-        public string manufacturer { get; set; }
-        public string description { get; set; }
-        public string price { get; set; }
-        public int stock { get; set; }
-
-        public APIResultRow()
-        {
-            code = "";
-            title = "";
-            manufacturer = "";
-            description = "";
-            price = "";
-            stock = 0;
-        }
+        public string? code { get; set; }
+        public string? title { get; set; }
+        public string? manufacturer { get; set; }
+        public string? description { get; set; }
+        public string? price { get; set; }
+        public int? stock { get; set; }
     }
 }
